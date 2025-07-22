@@ -2,11 +2,11 @@
 name = "port-checker"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["William Xue"]
 license = "MIT"
-description = "A simple command-line tool to check port usage"
-homepage = "https://github.com/yourusername/port-checker"
-repository = "https://github.com/yourusername/port-checker"
+description = "A fast and user-friendly command-line tool to check port usage"
+homepage = "https://github.com/william-xue/port-checker"
+repository = "https://github.com/william-xue/port-checker"
 readme = "README.md"
 keywords = ["port", "network", "cli", "system", "tools"]
 categories = ["command-line-utilities", "network-programming"]
