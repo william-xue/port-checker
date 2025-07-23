@@ -23,14 +23,14 @@ cargo install port-checker
 ### From source
 
 ```bash
-git clone https://github.com/yourusername/port-checker.git
+git clone https://github.com/william-xue/port-checker.git
 cd port-checker
 cargo install --path .
 ```
 
 ### Pre-built binaries
 
-Download the latest release from the [releases page](https://github.com/yourusername/port-checker/releases).
+Download the latest release from the [releases page](https://github.com/william-xue/port-checker/releases).
 
 ## Usage
 
@@ -68,6 +68,16 @@ port-checker find 8080
 
 # Find process using UDP port 53
 port-checker find 53 --protocol udp
+```
+
+### Kill a process using a port
+
+```bash
+# Kill process using TCP port 8080
+port-checker kill 8080
+
+# Kill process using UDP port 53
+port-checker kill 53 --protocol udp
 ```
 
 ### Show port usage statistics
@@ -141,6 +151,16 @@ Find the process using a specific port.
 **Options:**
 - `-p, --protocol <PROTOCOL>`: Protocol type (default: tcp)
 
+### `port-checker kill <PORT> [OPTIONS]`
+
+Kill the process using a specific port.
+
+**Arguments:**
+- `<PORT>`: Port number to find the process to kill
+
+**Options:**
+- `-p, --protocol <PROTOCOL>`: Protocol type (default: tcp)
+
 ### `port-checker stats`
 
 Display port usage statistics.
@@ -172,7 +192,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
 
 ## Acknowledgments
 
@@ -182,4 +202,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-If you encounter any issues or have questions, please [open an issue](https://github.com/yourusername/port-checker/issues) on GitHub.
+If you encounter any issues or have questions, please [open an issue](https://github.com/william-xue/port-checker/issues) on GitHub.

@@ -1,6 +1,6 @@
 [package]
 name = "port-checker"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["William Xue"]
 license = "MIT"
@@ -8,6 +8,9 @@ description = "A fast and user-friendly command-line tool to check port usage"
 homepage = "https://github.com/william-xue/port-checker"
 repository = "https://github.com/william-xue/port-checker"
 readme = "README.md"
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--generate-link-to-definition"]
 keywords = ["port", "network", "cli", "system", "tools"]
 categories = ["command-line-utilities", "network-programming"]
 
