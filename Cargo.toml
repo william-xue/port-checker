@@ -29,3 +29,9 @@ nix = "0.27"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winsock2", "ws2ipdef", "iphlpapi", "tcpmib"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
