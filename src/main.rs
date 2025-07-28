@@ -1,14 +1,19 @@
 use clap::{Parser, Subcommand};
 use anyhow::Result;
 use colored::*;
-use serde_json;
-use tabled::{Table, Tabled};
+
+use std::str::FromStr;
 
 mod port_scanner;
 mod port_manager;
+mod config;
+mod formatter;
 
 use port_scanner::{PortInfo, scan_ports, scan_specific_port};
-use port_manager::{PortGuard, PortAllocator, bind_random_port, bind_and_spawn};
+use port_manager::{PortGuard, bind_random_port};
+use config::{Config, OutputFormat};
+use formatter::format_ports;
+use tabled::{Tabled, Table};
 
 #[derive(Parser)]
 #[command(name = "port-checker")]
@@ -17,6 +22,18 @@ use port_manager::{PortGuard, PortAllocator, bind_random_port, bind_and_spawn};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    
+    /// Output format
+    #[arg(short = 'f', long = "format", global = true)]
+    format: Option<String>,
+    
+    /// Config file path
+    #[arg(short = 'c', long = "config", global = true)]
+    config: Option<String>,
+    
+    /// Verbose output
+    #[arg(short = 'v', long = "verbose", global = true)]
+    verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -88,6 +105,26 @@ enum Commands {
         #[arg(short, long)]
         keep: bool,
     },
+    /// Configuration management
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Show current configuration
+    Show,
+    /// Create default configuration file
+    Init,
+    /// Set configuration value
+    Set {
+        /// Configuration key
+        key: String,
+        /// Configuration value
+        value: String,
+    },
 }
 
 #[derive(Tabled)]
@@ -108,10 +145,29 @@ struct PortDisplay {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    
+    // 加载配置
+    let mut config = if let Some(config_path) = &cli.config {
+        Config::load_from_file(config_path)?
+    } else {
+        Config::load_default()?
+    };
+    
+    // 覆盖配置中的verbose设置
+    if cli.verbose {
+        config.verbose = true;
+    }
+    
+    // 确定输出格式
+    let output_format = if let Some(format_str) = &cli.format {
+        OutputFormat::from_str(format_str)?
+    } else {
+        config.default_format.clone()
+    };
 
     match cli.command {
         Commands::List { protocol, listening, json } => {
-            handle_list_command(protocol, listening, json)?
+            handle_list_command(protocol, listening, json, &config, &output_format)?
         }
         Commands::Check { port, protocol } => {
             handle_check_command(port, protocol)?
@@ -131,13 +187,59 @@ fn main() -> Result<()> {
         Commands::Reserve { port, protocol, command, keep } => {
             handle_reserve_command(port, protocol, command, keep)?
         }
+        Commands::Config { action } => {
+            handle_config_command(&action, &config)?
+        }
     }
 
     Ok(())
 }
 
+fn display_ports_table(ports: &[PortInfo]) {
+    if ports.is_empty() {
+        println!("No ports found");
+        return;
+    }
+
+    let display_ports: Vec<PortDisplay> = ports.iter().map(|p| PortDisplay {
+        protocol: p.protocol.clone(),
+        local_address: p.local_addr.clone(),
+        remote_address: p.remote_addr.clone().unwrap_or_else(|| "-".to_string()),
+        state: p.state.clone(),
+        pid: p.pid.map_or_else(|| "-".to_string(), |pid| pid.to_string()),
+        process_name: p.process_name.clone().unwrap_or_else(|| "-".to_string()),
+    }).collect();
+
+    let table = Table::new(display_ports);
+    println!("{}", table);
+}
+
+fn handle_config_command(action: &ConfigAction, config: &Config) -> Result<()> {
+    match action {
+        ConfigAction::Show => {
+            println!("Current configuration:");
+            println!("  Default format: {:?}", config.default_format);
+            println!("  Scan timeout: {}s", config.scan_timeout);
+            println!("  Concurrent threads: {}", config.concurrent_threads);
+            println!("  Verbose: {}", config.verbose);
+            println!("  Show process info: {}", config.show_process_info);
+            println!("  Port range: {}-{}", config.port_range.start, config.port_range.end);
+            println!("  Default reserve duration: {}s", config.default_reserve_duration);
+        }
+        ConfigAction::Init => {
+            Config::create_default_config()?;
+        }
+        ConfigAction::Set { key, value } => {
+            println!("Setting {} = {}", key, value);
+            // TODO: 实现配置设置功能
+            println!("⚠️  Configuration setting not yet implemented");
+        }
+    }
+    Ok(())
+}
+
 fn handle_pick_command(start: u16, end: u16, keep: bool) -> Result<()> {
-    use std::io::{self, Write};
+    use std::io;
     
     println!("{} Allocating random port in range {}..{}", "🎲".blue(), start, end);
     
@@ -174,7 +276,7 @@ fn handle_pick_command(start: u16, end: u16, keep: bool) -> Result<()> {
 }
 
 fn handle_reserve_command(port: u16, protocol: String, command: Option<String>, keep: bool) -> Result<()> {
-    use std::io::{self, Write};
+    use std::io;
     
     println!("{} Reserving port {} ({})", "🔒".blue(), port, protocol.to_uppercase());
     
@@ -270,7 +372,7 @@ fn handle_reserve_command(port: u16, protocol: String, command: Option<String>, 
     Ok(())
 }
 
-fn handle_list_command(protocol: Option<String>, listening: bool, json: bool) -> Result<()> {
+fn handle_list_command(protocol: Option<String>, listening: bool, json: bool, config: &Config, output_format: &OutputFormat) -> Result<()> {
     let mut ports = scan_ports()?;
 
     // 过滤协议
@@ -283,11 +385,15 @@ fn handle_list_command(protocol: Option<String>, listening: bool, json: bool) ->
         ports.retain(|p| p.state == "LISTEN" || p.state == "UDP");
     }
 
-    if json {
+    // 使用配置的输出格式，但命令行参数优先
+    if json || matches!(output_format, OutputFormat::Json) {
         println!("{}", serde_json::to_string_pretty(&ports)?);
     } else {
-        display_ports_table(&ports);
-        println!("\n{}: {} ports found", "Total".bold(), ports.len());
+        let output = format_ports(&ports, output_format)?;
+         println!("{}", output);
+        if config.verbose {
+            println!("\n{}: {} ports found", "Total".bold(), ports.len());
+        }
     }
 
     Ok(())
@@ -383,19 +489,7 @@ fn handle_stats_command() -> Result<()> {
     Ok(())
 }
 
-fn display_ports_table(ports: &[PortInfo]) {
-    let display_ports: Vec<PortDisplay> = ports.iter().map(|p| PortDisplay {
-        protocol: p.protocol.clone(),
-        local_address: p.local_addr.clone(),
-        remote_address: p.remote_addr.clone().unwrap_or("-".to_string()),
-        state: p.state.clone(),
-        pid: p.pid.map_or("-".to_string(), |pid| pid.to_string()),
-        process_name: p.process_name.clone().unwrap_or("-".to_string()),
-    }).collect();
 
-    let table = Table::new(display_ports);
-    println!("{}", table);
-}
 
 fn handle_kill_command(port: u16, protocol: String, force: bool) -> Result<()> {
     use std::process::Command;

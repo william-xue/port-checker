@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortInfo {
@@ -14,30 +15,47 @@ pub struct PortInfo {
 
 #[cfg(target_os = "linux")]
 pub fn scan_ports() -> Result<Vec<PortInfo>> {
+    scan_ports_concurrent()
+}
+
+#[cfg(target_os = "linux")]
+pub fn scan_ports_concurrent() -> Result<Vec<PortInfo>> {
     use std::fs;
-    use std::process::Command;
     
-    let mut ports = Vec::new();
+    let ports = Arc::new(Mutex::new(Vec::new()));
+    let mut handles = vec![];
     
-    // 读取TCP连接
-    if let Ok(tcp_content) = fs::read_to_string("/proc/net/tcp") {
-        ports.extend(parse_proc_net(&tcp_content, "TCP")?);
+    // 并发读取不同协议的连接信息
+    let protocols = vec![
+        ("/proc/net/tcp", "TCP"),
+        ("/proc/net/tcp6", "TCP6"),
+        ("/proc/net/udp", "UDP"),
+        ("/proc/net/udp6", "UDP6"),
+    ];
+    
+    for (path, protocol) in protocols {
+        let ports_clone = Arc::clone(&ports);
+        let protocol = protocol.to_string();
+        let path = path.to_string();
+        
+        let handle = thread::spawn(move || {
+            if let Ok(content) = fs::read_to_string(&path) {
+                if let Ok(parsed_ports) = parse_proc_net(&content, &protocol) {
+                    let mut ports_guard = ports_clone.lock().unwrap();
+                    ports_guard.extend(parsed_ports);
+                }
+            }
+        });
+        
+        handles.push(handle);
     }
     
-    // 读取TCP6连接
-    if let Ok(tcp6_content) = fs::read_to_string("/proc/net/tcp6") {
-        ports.extend(parse_proc_net(&tcp6_content, "TCP6")?);
+    // 等待所有线程完成
+    for handle in handles {
+        handle.join().unwrap();
     }
     
-    // 读取UDP连接
-    if let Ok(udp_content) = fs::read_to_string("/proc/net/udp") {
-        ports.extend(parse_proc_net(&udp_content, "UDP")?);
-    }
-    
-    // 读取UDP6连接
-    if let Ok(udp6_content) = fs::read_to_string("/proc/net/udp6") {
-        ports.extend(parse_proc_net(&udp6_content, "UDP6")?);
-    }
+    let mut ports = Arc::try_unwrap(ports).unwrap().into_inner().unwrap();
     
     // 获取进程信息
     add_process_info(&mut ports)?;
@@ -47,22 +65,46 @@ pub fn scan_ports() -> Result<Vec<PortInfo>> {
 
 #[cfg(target_os = "macos")]
 pub fn scan_ports() -> Result<Vec<PortInfo>> {
+    scan_ports_concurrent()
+}
+
+#[cfg(target_os = "macos")]
+pub fn scan_ports_concurrent() -> Result<Vec<PortInfo>> {
     use std::process::Command;
     
-    let output = Command::new("netstat")
-        .args(&["-an", "-p", "tcp"])
-        .output()?;
+    let ports = Arc::new(Mutex::new(Vec::new()));
+    let mut handles = vec![];
     
-    let mut ports = Vec::new();
-    let tcp_output = String::from_utf8_lossy(&output.stdout);
-    ports.extend(parse_macos_netstat(&tcp_output, "TCP")?);
+    // 并发执行TCP和UDP扫描
+    let protocols = vec![("tcp", "TCP"), ("udp", "UDP")];
     
-    let output = Command::new("netstat")
-        .args(&["-an", "-p", "udp"])
-        .output()?;
+    for (netstat_proto, proto_name) in protocols {
+        let ports_clone = Arc::clone(&ports);
+        let netstat_proto = netstat_proto.to_string();
+        let proto_name = proto_name.to_string();
+        
+        let handle = thread::spawn(move || {
+            if let Ok(output) = Command::new("netstat")
+                .args(&["-an", "-p", &netstat_proto])
+                .output() {
+                
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                if let Ok(parsed_ports) = parse_macos_netstat(&output_str, &proto_name) {
+                    let mut ports_guard = ports_clone.lock().unwrap();
+                    ports_guard.extend(parsed_ports);
+                }
+            }
+        });
+        
+        handles.push(handle);
+    }
     
-    let udp_output = String::from_utf8_lossy(&output.stdout);
-    ports.extend(parse_macos_netstat(&udp_output, "UDP")?);
+    // 等待所有线程完成
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    
+    let mut ports = Arc::try_unwrap(ports).unwrap().into_inner().unwrap();
     
     // 获取进程信息
     add_macos_process_info(&mut ports)?;
@@ -255,47 +297,7 @@ fn parse_lsof_for_port(lsof_output: &str) -> Option<(u32, String)> {
     None
 }
 
-#[cfg(target_os = "macos")]
-fn parse_lsof_output(output: &str, ports: &mut Vec<PortInfo>) -> Result<()> {
-    for line in output.lines() {
-        if line.starts_with("COMMAND") { continue; }
-        
-        let fields: Vec<&str> = line.split_whitespace().collect();
-        if fields.len() < 9 { continue; }
-        
-        let process_name = fields[0];
-        let pid = fields[1].parse::<u32>().ok();
-        let name_field = fields[8];
-        
-        // 解析地址信息
-        if let Some(arrow_pos) = name_field.find("->") {
-            let local_part = &name_field[..arrow_pos];
-            if let Some(colon_pos) = local_part.rfind(':') {
-                let port_str = &local_part[colon_pos + 1..];
-                
-                // 查找匹配的端口并更新信息
-                for port in ports.iter_mut() {
-                    if port.local_addr.ends_with(&format!(":{}", port_str)) {
-                        port.pid = pid;
-                        port.process_name = Some(process_name.to_string());
-                    }
-                }
-            }
-        } else if let Some(colon_pos) = name_field.rfind(':') {
-            let port_str = &name_field[colon_pos + 1..];
-            
-            // 查找匹配的端口并更新信息
-            for port in ports.iter_mut() {
-                if port.local_addr.ends_with(&format!(":{}", port_str)) {
-                    port.pid = pid;
-                    port.process_name = Some(process_name.to_string());
-                }
-            }
-        }
-    }
-    
-    Ok(())
-}
+
 
 #[cfg(target_os = "linux")]
 fn add_process_info(ports: &mut Vec<PortInfo>) -> Result<()> {
@@ -346,13 +348,7 @@ fn parse_netstat_output(output: &str, ports: &mut Vec<PortInfo>) -> Result<()> {
     Ok(())
 }
 
-fn extract_port_from_addr(addr: &str) -> String {
-    if let Some(colon_pos) = addr.rfind(':') {
-        addr[colon_pos + 1..].to_string()
-    } else {
-        addr.to_string()
-    }
-}
+
 
 // Windows 实现
 #[cfg(windows)]

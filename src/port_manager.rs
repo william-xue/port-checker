@@ -2,7 +2,7 @@
 //! 提供智能端口分配、生命周期管理和测试支持
 
 use anyhow::{Result, anyhow};
-use std::net::{TcpListener, UdpSocket, SocketAddr};
+use std::net::{TcpListener, UdpSocket};
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
@@ -32,19 +32,7 @@ impl PortGuard {
         })
     }
     
-    /// 绑定UDP端口
-    pub fn bind_udp(port: u16) -> Result<Self> {
-        let addr = format!("127.0.0.1:{}", port);
-        let socket = UdpSocket::bind(&addr)
-            .map_err(|e| anyhow!("Failed to bind UDP port {}: {}", port, e))?;
-        
-        Ok(PortGuard {
-            port,
-            _listener: None,
-            _socket: Some(socket),
-            child_process: None,
-        })
-    }
+
     
     /// 启动子进程并绑定到端口生命周期
     /// 注意：这会释放当前的端口绑定，让子进程能够绑定该端口
@@ -160,11 +148,7 @@ impl PortAllocator {
         Err(anyhow!("Failed to allocate port after {} attempts", MAX_ATTEMPTS))
     }
     
-    /// 释放端口（通常在 PortGuard drop 时自动调用）
-    pub fn release_port(&self, port: u16) {
-        let mut used_ports = self.used_ports.lock().unwrap();
-        used_ports.remove(&port);
-    }
+
 }
 
 /// 测试用的模拟端口
@@ -250,12 +234,7 @@ pub fn bind_random_port(range_start: u16, range_end: u16) -> Result<PortGuard> {
     allocator.allocate_random()
 }
 
-/// 便捷函数：绑定端口并启动子进程
-pub fn bind_and_spawn<S: AsRef<str>>(port: u16, command: S) -> Result<PortGuard> {
-    let mut guard = PortGuard::bind_tcp(port)?;
-    guard.spawn_child(command)?;
-    Ok(guard)
-}
+
 
 #[cfg(test)]
 mod tests {
