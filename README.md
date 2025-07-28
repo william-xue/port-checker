@@ -358,10 +358,60 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ### 🚧 Planned Features
 
-我们正在积极开发以下高级功能，让 Port Checker 成为更强大的网络诊断工具：
+我们正在积极开发以下高级功能，让 Port Checker 成为更强大的云原生端口治理平台：
+
+#### 🎯 端口调度器 (Scheduler) - v0.4.0
+```bash
+# K8s Dynamic Admission Webhook 集成
+port-checker scheduler --webhook --port 9443
+
+# Pod 创建时自动注入空闲端口
+port-checker scheduler --auto-inject --namespace default
+
+# 冲突实时重试机制
+port-checker scheduler --retry-on-conflict --max-retries 3
+```
+
+#### 🔒 安全策略引擎 - v0.5.0
+```bash
+# 端口白名单管理
+port-checker security --whitelist-add 80,443,8080
+port-checker security --whitelist-remove 3000
+
+# 基于身份的 ACL 控制
+port-checker security --acl-user john --allow 8080-8090
+port-checker security --acl-group developers --deny 22
+
+# 异常流量自动封禁
+port-checker security --auto-ban --threshold 100req/s
+port-checker security --ban-duration 1h
+```
+
+#### 📊 观测与审计平台 - v0.6.0
+```bash
+# 端口使用热力图
+port-checker observe --heatmap --time-range 24h
+port-checker observe --heatmap --export png
+
+# 泄露检测与告警
+port-checker observe --leak-detection --alert-webhook https://hooks.slack.com/...
+port-checker observe --scan-external --report
+
+# 一键回收闲置端口
+port-checker observe --cleanup --idle-time 7d
+port-checker observe --cleanup --dry-run
+```
 
 #### ⚡ 高性能扫描
 ```bash
+# 网络接口过滤
+port-checker scan --interface eth0 --ports 1-65535
+port-checker scan --interface wlan0 --protocol tcp
+
+# SYN 扫描支持
+port-checker scan --syn-scan 192.168.1.0/24
+port-checker scan --stealth-mode --timeout 1s
+
 # 扫描网段的端口范围
 port-checker scan 192.168.1.0/24 --ports 1-1000
 
@@ -370,22 +420,49 @@ port-checker scan --preset web
 port-checker scan --preset database
 ```
 
+#### 🔍 服务识别与指纹识别
+```bash
+# Banner 抓取与服务版本检测
+port-checker identify 80 --banner-grab
+port-checker identify 22 --service-version
+
+# 安全风险评估
+port-checker identify --security-scan --cve-check
+port-checker identify --risk-report --format pdf
+
+# 健康检查预设服务
+port-checker health-check --preset database
+port-checker health-check --custom-script /path/to/check.sh
+```
+
 #### 📊 监控模式
 ```bash
 # 持续监控指定端口
 port-checker monitor --watch 80,443 --alert
+port-checker monitor --connection-stats --interval 5s
 
 # 实时仪表板
 port-checker dashboard --refresh 1s
+port-checker dashboard --web-ui --port 9090
+
+# 历史数据记录
+port-checker monitor --history --retention 30d
+port-checker monitor --export-metrics prometheus
 ```
 
-#### 🔍 服务识别
+#### 🌐 集成与导出
 ```bash
-# 识别端口上运行的服务
-port-checker identify 80 --fingerprint
+# API 接口服务
+port-checker api --server --port 8080
+port-checker api --client --endpoint http://localhost:8080
 
-# 健康检查预设服务
-port-checker health-check --preset database
+# 多格式报告导出
+port-checker export --format xml --output report.xml
+port-checker export --format html --template custom.html
+
+# 第三方工具集成
+port-checker integrate --grafana --datasource
+port-checker integrate --prometheus --metrics-endpoint
 ```
 
 #### 📋 预设配置
@@ -393,8 +470,22 @@ port-checker health-check --preset database
 - **database**: 3306, 5432, 27017, 6379
 - **development**: 3000, 8000, 8080, 9000
 - **security**: 22, 443, 993, 995
+- **kubernetes**: 6443, 2379, 2380, 10250, 10251, 10252
+- **microservices**: 8080-8090, 9090-9099
 
-这些功能将在后续版本中逐步发布，敬请期待！
+### 🎯 发展愿景
+
+**短期目标 (v0.4.0 - v0.6.0)**：
+- 实现云原生端口调度器
+- 构建企业级安全策略引擎
+- 开发全面的观测与审计平台
+
+**长期目标 (v1.0.0+)**：
+- 成为 Kubernetes 生态的标准端口治理组件
+- 提供完整的企业级端口安全解决方案
+- 建立活跃的开源社区和商业生态
+
+这些功能将让 Port Checker 从简单的端口查看工具发展为专业的云原生端口治理平台！
 
 ## Support
 
