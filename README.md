@@ -11,6 +11,9 @@ A fast and user-friendly command-line tool to check port usage on your system. B
 - 🔎 **Process Detection**: Find which process is using a specific port
 - 📋 **Multiple Formats**: Output in table or JSON format
 - 🌐 **Cross-Platform**: Works on Linux, macOS, and Windows
+- 🎯 **Smart Port Allocation**: Automatically find and allocate available ports
+- 🔒 **Port Reservation**: Reserve ports and bind them to process lifecycles
+- 🔗 **Process Integration**: Run commands with pre-allocated ports
 
 ## Installation
 
@@ -86,6 +89,29 @@ port-checker kill 53 --protocol udp
 port-checker stats
 ```
 
+### Smart port allocation
+
+```bash
+# Allocate a random available port in range
+port-checker pick --start 8000 --end 9000
+
+# Keep the port reserved (don't exit immediately)
+port-checker pick --start 8080 --end 8090 --keep
+```
+
+### Reserve a specific port
+
+```bash
+# Reserve a port temporarily
+port-checker reserve 8888
+
+# Reserve a port and run a command with it
+port-checker reserve 8888 --command "python3 -m http.server"
+
+# Keep the port reserved after command exits
+port-checker reserve 8888 --command "node server.js" --keep
+```
+
 ## Examples
 
 ### Example Output
@@ -118,6 +144,27 @@ $ port-checker find 22
   Process Name: sshd
   Local Address: 0.0.0.0:22
   State: LISTEN
+```
+
+```
+$ port-checker pick --start 8080 --end 8090
+🎲 Allocating random port in range 8080..8090
+✅ Successfully allocated port: 8085
+  Address: 127.0.0.1:8085
+  Protocol: TCP
+
+⚡ Port 8085 allocated successfully. Use it quickly before this program exits!
+💡 Press Enter to release the port...
+```
+
+```
+$ port-checker reserve 8888 --command "python3 -m http.server"
+🔒 Reserving port 8888 (TCP)
+✅ Port 8888 successfully reserved
+🚀 Starting command: python3 -m http.server
+✅ Command started with PID: 12345
+⏳ Waiting for command to complete...
+Serving HTTP on 0.0.0.0 port 8888 (http://0.0.0.0:8888/) ...
 ```
 
 ## Command Reference
@@ -165,6 +212,27 @@ Kill the process using a specific port.
 
 Display port usage statistics.
 
+### `port-checker pick [OPTIONS]`
+
+Allocate a random available port in specified range.
+
+**Options:**
+- `-s, --start <START>`: Start of port range (default: 8000)
+- `-e, --end <END>`: End of port range (default: 9000)
+- `-k, --keep`: Keep the port reserved (don't exit immediately)
+
+### `port-checker reserve <PORT> [OPTIONS]`
+
+Reserve a specific port and optionally run a command.
+
+**Arguments:**
+- `<PORT>`: Port number to reserve
+
+**Options:**
+- `-p, --protocol <PROTOCOL>`: Protocol (tcp/udp) (default: tcp)
+- `-c, --command <COMMAND>`: Command to run with the reserved port
+- `-k, --keep`: Keep the port reserved after command exits
+
 ## Requirements
 
 - **Linux**: No additional requirements
@@ -199,6 +267,55 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 - Built with [clap](https://github.com/clap-rs/clap) for command-line parsing
 - Uses [colored](https://github.com/mackwic/colored) for terminal colors
 - Table formatting with [tabled](https://github.com/zhiburt/tabled)
+
+## 🚀 Roadmap - Upcoming Features
+
+我们正在积极开发以下高级功能，让 Port Checker 成为更强大的网络诊断工具：
+
+### 🎯 智能端口分配
+```bash
+# 自动选择可用端口
+port-checker pick --range 8000-9000
+
+# 预留端口一段时间
+port-checker reserve 8080 --duration 1h
+```
+
+### ⚡ 高性能扫描
+```bash
+# 扫描网段的端口范围
+port-checker scan 192.168.1.0/24 --ports 1-1000
+
+# 使用预设扫描常见服务端口
+port-checker scan --preset web
+port-checker scan --preset database
+```
+
+### 📊 监控模式
+```bash
+# 持续监控指定端口
+port-checker monitor --watch 80,443 --alert
+
+# 实时仪表板
+port-checker dashboard --refresh 1s
+```
+
+### 🔍 服务识别
+```bash
+# 识别端口上运行的服务
+port-checker identify 80 --fingerprint
+
+# 健康检查预设服务
+port-checker health-check --preset database
+```
+
+### 📋 预设配置
+- **web**: 80, 443, 8080, 8443, 3000, 5000
+- **database**: 3306, 5432, 27017, 6379
+- **development**: 3000, 8000, 8080, 9000
+- **security**: 22, 443, 993, 995
+
+这些功能将在后续版本中逐步发布，敬请期待！
 
 ## Support
 

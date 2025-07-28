@@ -5,7 +5,10 @@ use serde_json;
 use tabled::{Table, Tabled};
 
 mod port_scanner;
+mod port_manager;
+
 use port_scanner::{PortInfo, scan_ports, scan_specific_port};
+use port_manager::{PortGuard, PortAllocator, bind_random_port, bind_and_spawn};
 
 #[derive(Parser)]
 #[command(name = "port-checker")]
@@ -59,6 +62,32 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+    /// Allocate a random available port in specified range
+    Pick {
+        /// Start of port range
+        #[arg(short, long, default_value = "8000")]
+        start: u16,
+        /// End of port range
+        #[arg(short, long, default_value = "9000")]
+        end: u16,
+        /// Keep the port reserved (don't exit immediately)
+        #[arg(short, long)]
+        keep: bool,
+    },
+    /// Reserve a specific port and optionally run a command
+    Reserve {
+        /// Port number to reserve
+        port: u16,
+        /// Protocol (tcp/udp)
+        #[arg(short, long, default_value = "tcp")]
+        protocol: String,
+        /// Command to run with the reserved port
+        #[arg(short, long)]
+        command: Option<String>,
+        /// Keep the port reserved after command exits
+        #[arg(short, long)]
+        keep: bool,
+    },
 }
 
 #[derive(Tabled)]
@@ -96,8 +125,148 @@ fn main() -> Result<()> {
         Commands::Kill { port, protocol, force } => {
             handle_kill_command(port, protocol, force)?
         }
+        Commands::Pick { start, end, keep } => {
+            handle_pick_command(start, end, keep)?
+        }
+        Commands::Reserve { port, protocol, command, keep } => {
+            handle_reserve_command(port, protocol, command, keep)?
+        }
     }
 
+    Ok(())
+}
+
+fn handle_pick_command(start: u16, end: u16, keep: bool) -> Result<()> {
+    use std::io::{self, Write};
+    
+    println!("{} Allocating random port in range {}..{}", "🎲".blue(), start, end);
+    
+    let guard = bind_random_port(start, end)?;
+    let port = guard.port();
+    
+    println!("{} Successfully allocated port: {}", "✅".green(), port.to_string().bold().green());
+    println!("  {}: 127.0.0.1:{}", "Address".bold(), port);
+    println!("  {}: TCP", "Protocol".bold());
+    
+    if keep {
+        println!("\n{} Port {} is reserved. Press Ctrl+C to release.", "🔒".yellow(), port);
+        
+        // 设置 Ctrl+C 处理器
+        let port_for_handler = port;
+        ctrlc::set_handler(move || {
+            println!("\n{} Releasing port {}...", "🔓".yellow(), port_for_handler);
+            std::process::exit(0);
+        }).expect("Error setting Ctrl-C handler");
+        
+        // 保持程序运行
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    } else {
+        println!("\n{} Port {} allocated successfully. Use it quickly before this program exits!", "⚡".yellow(), port);
+        println!("{} Press Enter to release the port...", "💡".blue());
+        
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+    }
+    
+    Ok(())
+}
+
+fn handle_reserve_command(port: u16, protocol: String, command: Option<String>, keep: bool) -> Result<()> {
+    use std::io::{self, Write};
+    
+    println!("{} Reserving port {} ({})", "🔒".blue(), port, protocol.to_uppercase());
+    
+    let mut guard = if protocol.to_lowercase() == "tcp" {
+        PortGuard::bind_tcp(port)?
+    } else {
+        return Err(anyhow::anyhow!("UDP reservation not yet implemented"));
+    };
+    
+    println!("{} Port {} successfully reserved", "✅".green(), port.to_string().bold().green());
+    
+    if let Some(cmd) = command {
+        println!("{} Starting command: {}", "🚀".blue(), cmd.bold());
+        
+        match guard.spawn_child(&cmd) {
+            Ok(child) => {
+                println!("{} Command started with PID: {}", "✅".green(), 
+                    child.id().to_string().bold());
+                
+                if keep {
+                    println!("\n{} Port {} reserved with running command. Press Ctrl+C to stop.", 
+                        "🔒".yellow(), port);
+                    
+                    // 设置 Ctrl+C 处理器
+                    let port_for_handler = port;
+                    ctrlc::set_handler(move || {
+                        println!("\n{} Stopping command and releasing port {}...", 
+                            "🛑".yellow(), port_for_handler);
+                        std::process::exit(0);
+                    }).expect("Error setting Ctrl-C handler");
+                    
+                    // 监控子进程
+                    loop {
+                        if !guard.is_child_running() {
+                            println!("\n{} Command has exited. Port {} is still reserved.", 
+                                "⚠️".yellow(), port);
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
+                    
+                    if keep {
+                        println!("{} Keeping port {} reserved. Press Ctrl+C to release.", 
+                            "🔒".yellow(), port);
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_secs(1));
+                        }
+                    }
+                } else {
+                    println!("{} Waiting for command to complete...", "⏳".blue());
+                    
+                    // 等待子进程完成
+                    while guard.is_child_running() {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    
+                    println!("{} Command completed. Port {} released.", "✅".green(), port);
+                }
+            }
+            Err(e) => {
+                println!("{} Failed to start command: {}", "❌".red(), e);
+                
+                if keep {
+                    println!("{} Port {} is still reserved. Press Enter to release...", 
+                        "🔒".yellow(), port);
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+                }
+            }
+        }
+    } else {
+        if keep {
+            println!("\n{} Port {} is reserved. Press Ctrl+C to release.", "🔒".yellow(), port);
+            
+            // 设置 Ctrl+C 处理器
+            let port_for_handler = port;
+            ctrlc::set_handler(move || {
+                println!("\n{} Releasing port {}...", "🔓".yellow(), port_for_handler);
+                std::process::exit(0);
+            }).expect("Error setting Ctrl-C handler");
+            
+            // 保持程序运行
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        } else {
+            println!("{} Press Enter to release the port...", "💡".blue());
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+        }
+    }
+    
     Ok(())
 }
 
