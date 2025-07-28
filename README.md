@@ -9,8 +9,10 @@ A fast and user-friendly command-line tool to check port usage on your system. B
 - 🔍 **Comprehensive**: Check TCP, UDP, IPv4, and IPv6 connections
 - 📊 **Statistics**: View detailed port usage statistics
 - 🔎 **Process Detection**: Find which process is using a specific port
-- 📋 **Multiple Formats**: Output in table or JSON format
+- 📋 **Multiple Formats**: Output in table, JSON, YAML, or CSV format
+- ⚙️ **Configuration File**: Customizable settings with TOML configuration
 - 🌐 **Cross-Platform**: Works on Linux, macOS, and Windows
+- 🚀 **Concurrent Scanning**: High-performance parallel port scanning
 - 🎯 **Smart Port Allocation**: Automatically find and allocate available ports
 - 🔒 **Port Reservation**: Reserve ports and bind them to process lifecycles
 - 🔗 **Process Integration**: Run commands with pre-allocated ports
@@ -49,8 +51,11 @@ port-checker list --protocol tcp
 # List only listening ports
 port-checker list --listening
 
-# Output in JSON format
-port-checker list --json
+# Output in different formats
+port-checker list --format json
+port-checker list --format yaml
+port-checker list --format csv
+port-checker list --format table  # default
 ```
 
 ### Check if a specific port is in use
@@ -112,6 +117,22 @@ port-checker reserve 8888 --command "python3 -m http.server"
 port-checker reserve 8888 --command "node server.js" --keep
 ```
 
+### Configuration Management
+
+```bash
+# Show current configuration
+port-checker config show
+
+# Initialize default configuration file
+port-checker config init
+
+# Use custom configuration file
+port-checker list --config /path/to/config.toml
+
+# Override settings with command line options
+port-checker list --format yaml --verbose
+```
+
 ## Examples
 
 ### Example Output
@@ -169,6 +190,14 @@ Serving HTTP on 0.0.0.0 port 8888 (http://0.0.0.0:8888/) ...
 
 ## Command Reference
 
+### Global Options
+
+These options are available for all commands:
+
+- `-f, --format <FORMAT>`: Output format (table, json, yaml, csv)
+- `-c, --config <FILE>`: Use custom configuration file
+- `-v, --verbose`: Enable verbose output
+
 ### `port-checker list [OPTIONS]`
 
 List all occupied ports on the system.
@@ -176,7 +205,6 @@ List all occupied ports on the system.
 **Options:**
 - `-p, --protocol <PROTOCOL>`: Filter by protocol (tcp/udp)
 - `-l, --listening`: Show only listening ports
-- `-j, --json`: Output in JSON format
 
 ### `port-checker check <PORT> [OPTIONS]`
 
@@ -233,6 +261,53 @@ Reserve a specific port and optionally run a command.
 - `-c, --command <COMMAND>`: Command to run with the reserved port
 - `-k, --keep`: Keep the port reserved after command exits
 
+### `port-checker config <ACTION>`
+
+Manage configuration settings.
+
+**Actions:**
+- `show`: Display current configuration
+- `init`: Create default configuration file at `~/.config/port-checker/config.toml`
+- `set`: Set configuration values (planned feature)
+
+## Configuration File
+
+Port Checker supports configuration files in TOML format. The default location is `~/.config/port-checker/config.toml`.
+
+### Example Configuration
+
+```toml
+# Default output format
+default_format = "Table"  # Table, Json, Yaml, Csv
+
+# Scan timeout in seconds
+scan_timeout = 30
+
+# Number of concurrent threads for scanning
+concurrent_threads = 4
+
+# Enable verbose output by default
+verbose = false
+
+# Show process information
+show_process_info = true
+
+# Default reserve duration in seconds
+default_reserve_duration = 3600  # 1 hour
+
+# Port allocation range
+[port_range]
+start = 8000
+end = 9000
+```
+
+### Configuration Priority
+
+1. Command-line arguments (highest priority)
+2. Custom config file specified with `--config`
+3. Default config file (`~/.config/port-checker/config.toml`)
+4. Built-in defaults (lowest priority)
+
 ## Requirements
 
 - **Linux**: No additional requirements
@@ -268,20 +343,24 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 - Uses [colored](https://github.com/mackwic/colored) for terminal colors
 - Table formatting with [tabled](https://github.com/zhiburt/tabled)
 
-## 🚀 Roadmap - Upcoming Features
+## 🚀 Roadmap
+
+### ✅ Completed Features
+
+- [x] Configuration file support (TOML)
+- [x] Multiple output formats (Table, JSON, YAML, CSV)
+- [x] Concurrent port scanning
+- [x] Cross-platform support
+- [x] Process information detection
+- [x] Port reservation system
+- [x] Smart port allocation
+- [x] Process integration
+
+### 🚧 Planned Features
 
 我们正在积极开发以下高级功能，让 Port Checker 成为更强大的网络诊断工具：
 
-### 🎯 智能端口分配
-```bash
-# 自动选择可用端口
-port-checker pick --range 8000-9000
-
-# 预留端口一段时间
-port-checker reserve 8080 --duration 1h
-```
-
-### ⚡ 高性能扫描
+#### ⚡ 高性能扫描
 ```bash
 # 扫描网段的端口范围
 port-checker scan 192.168.1.0/24 --ports 1-1000
@@ -291,7 +370,7 @@ port-checker scan --preset web
 port-checker scan --preset database
 ```
 
-### 📊 监控模式
+#### 📊 监控模式
 ```bash
 # 持续监控指定端口
 port-checker monitor --watch 80,443 --alert
@@ -300,7 +379,7 @@ port-checker monitor --watch 80,443 --alert
 port-checker dashboard --refresh 1s
 ```
 
-### 🔍 服务识别
+#### 🔍 服务识别
 ```bash
 # 识别端口上运行的服务
 port-checker identify 80 --fingerprint
@@ -309,7 +388,7 @@ port-checker identify 80 --fingerprint
 port-checker health-check --preset database
 ```
 
-### 📋 预设配置
+#### 📋 预设配置
 - **web**: 80, 443, 8080, 8443, 3000, 5000
 - **database**: 3306, 5432, 27017, 6379
 - **development**: 3000, 8000, 8080, 9000
