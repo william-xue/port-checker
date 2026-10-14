@@ -19,13 +19,21 @@ pub struct PortGuard {
 
 impl PortGuard {
     /// 绑定指定端口
+    ///
+    /// 传 0 表示由系统分配空闲端口，此时必须回读监听器上真实的端口号，
+    /// 否则 `port()` 会返回 0（原实现的 bug）。
     pub fn bind_tcp(port: u16) -> Result<Self> {
         let addr = format!("127.0.0.1:{}", port);
         let listener = TcpListener::bind(&addr)
             .map_err(|e| anyhow!("Failed to bind TCP port {}: {}", port, e))?;
-        
+
+        let bound_port = listener
+            .local_addr()
+            .map_err(|e| anyhow!("Failed to read bound TCP port: {}", e))?
+            .port();
+
         Ok(PortGuard {
-            port,
+            port: bound_port,
             _listener: Some(listener),
             _socket: None,
             child_process: None,

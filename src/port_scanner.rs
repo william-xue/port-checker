@@ -317,6 +317,15 @@ fn add_process_info(ports: &mut Vec<PortInfo>) -> Result<()> {
     Ok(())
 }
 
+/// netstat 打印的本地地址形如 `0.0.0.0:8080` 或 `[::]:8080`，端口号在最后一个冒号之后；
+/// `parse_address` 生成的地址同样以 `:端口` 结尾，因此两者共用这一个解析函数。
+///
+/// 不按平台裁剪：它是纯字符串函数，这样单元测试在任何平台上都能跑到。
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn extract_port_from_addr(addr: &str) -> Option<u16> {
+    addr.rsplit(':').next()?.trim().parse::<u16>().ok()
+}
+
 #[cfg(target_os = "linux")]
 fn parse_netstat_output(output: &str, ports: &mut Vec<PortInfo>) -> Result<()> {
     for line in output.lines() {
@@ -329,6 +338,9 @@ fn parse_netstat_output(output: &str, ports: &mut Vec<PortInfo>) -> Result<()> {
         
         let local_addr = fields[3];
         let pid_process = fields[6];
+
+        // 先解析出本次 netstat 行里的端口号，后面按数值比较。
+        let Some(netstat_port) = extract_port_from_addr(local_addr) else { continue };
         
         if let Some(slash_pos) = pid_process.find('/') {
             if let Ok(pid) = pid_process[..slash_pos].parse::<u32>() {
@@ -336,7 +348,7 @@ fn parse_netstat_output(output: &str, ports: &mut Vec<PortInfo>) -> Result<()> {
                 
                 // 查找匹配的端口并更新信息
                 for port in ports.iter_mut() {
-                    if port.local_addr.contains(&extract_port_from_addr(local_addr)) {
+                    if extract_port_from_addr(&port.local_addr) == Some(netstat_port) {
                         port.pid = Some(pid);
                         port.process_name = Some(process_name.to_string());
                     }
@@ -452,4 +464,32 @@ pub fn scan_specific_port(port: u16, protocol: &str) -> Result<Option<PortInfo>>
     }
     
     Ok(None)
+}
+#[cfg(test)]
+mod extract_port_from_addr_tests {
+    use super::extract_port_from_addr;
+
+    #[test]
+    fn parses_ipv4_and_ipv6_netstat_addresses() {
+        assert_eq!(extract_port_from_addr("0.0.0.0:8080"), Some(8080));
+        assert_eq!(extract_port_from_addr("127.0.0.1:5432"), Some(5432));
+        assert_eq!(extract_port_from_addr("[::]:8080"), Some(8080));
+        assert_eq!(extract_port_from_addr("[::1]:3306"), Some(3306));
+    }
+
+    #[test]
+    fn rejects_addresses_without_a_valid_port() {
+        assert_eq!(extract_port_from_addr(""), None);
+        assert_eq!(extract_port_from_addr("0.0.0.0"), None);
+        assert_eq!(extract_port_from_addr("0.0.0.0:"), None);
+    }
+
+    /// 端口必须按数值比较：子串匹配会让端口 80 命中 8080。
+    #[test]
+    fn distinguishes_port_80_from_8080() {
+        assert_ne!(
+            extract_port_from_addr("0.0.0.0:80"),
+            extract_port_from_addr("0.0.0.0:8080")
+        );
+    }
 }
